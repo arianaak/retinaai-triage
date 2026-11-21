@@ -31,6 +31,7 @@ class Predictor:
         cfg = ckpt["config"]
         self.img_size = cfg["img_size"]
         self.preprocess = cfg["preprocess"]
+        self.cache_size = cfg.get("cache_size") if cfg.get("cache_dir") else None
         self.mc_samples = max(1, mc_samples)
         self.tta = tta
         self.model_info = {
@@ -40,6 +41,13 @@ class Predictor:
                             if k in ("qwk", "referable_sensitivity", "referable_specificity",
                                      "referable_auc", "n")},
         }
+
+    def _square(self, rgb: np.ndarray) -> np.ndarray:
+        # Must mirror training: with a cache, images went original -> cache_size -> img_size
+        # (data.py ensure_cache + FundusDataset.__getitem__).
+        if self.cache_size:
+            rgb = to_square_fundus(rgb, self.cache_size)
+        return to_square_fundus(rgb, self.img_size)
 
     def _tensor(self, rgb_square: np.ndarray) -> torch.Tensor:
         x = normalize_chw(enhance(rgb_square, self.preprocess))
@@ -59,7 +67,7 @@ class Predictor:
     def predict(self, image, return_heatmap: bool = True) -> dict:
         rgb = load_rgb(image)
         quality = assess_quality(rgb)
-        square = to_square_fundus(rgb, self.img_size)
+        square = self._square(rgb)
         x = self._tensor(square)
 
         samples = self._mc_probs(x)
