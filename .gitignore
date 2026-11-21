@@ -1,0 +1,22 @@
+# data & model artefacts — never commit datasets or large weights
+data/
+outputs/
+weights/
+cache/
+*.pt
+*.pth
+*.ckpt
+*.npy
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# env / secrets
+.env
+.DS_Store
