@@ -8,7 +8,8 @@ compared on exactly the same degraded images.
 
     python -m retinaai.evaluate --checkpoint outputs/baseline/model_inference.pt \
         --split_csv outputs/baseline/val_split.csv --data_dir $DATA \
-        --out outputs/robustness_baseline.json --examples_png outputs/degradation_examples.png
+        --out outputs/robustness_baseline.json --examples_png outputs/degradation_examples.png \
+        --save_probs outputs/robustness_baseline.npz
 """
 
 from __future__ import annotations
@@ -121,6 +122,7 @@ def main(argv=None):
     ap.add_argument("--max_images", type=int, default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--examples_png", default=None)
+    ap.add_argument("--save_probs", default=None, help="save per-image predictions (.npz) for later analysis")
     a = ap.parse_args(argv)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -134,10 +136,11 @@ def main(argv=None):
     def make(s):
         return DegradedSet(df, a.data_dir, a.image_dir, a.image_ext, cfg, s, a.seed)
 
-    results = {}
+    results, saved = {}, {}
     for s in strengths:
         y, probs, q = run_strength(model, make(s), device, a.batch_size, a.num_workers)
         results[str(s)] = summarize(y, probs, q)
+        saved[f"probs_{s}"], saved[f"quality_{s}"], saved["y"] = probs, q, y
         print(f"strength {s}: " + " | ".join(f"{k} {v:.3f}" for k, v in results[str(s)].items()), flush=True)
 
     table = pd.DataFrame(results).T
@@ -147,6 +150,9 @@ def main(argv=None):
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps({"checkpoint": os.path.abspath(a.checkpoint),
                                            "n_images": len(df), "results": results}, indent=2))
+    if a.save_probs:
+        np.savez(a.save_probs, ids=df["id"].astype(str).values, strengths=np.array(strengths), **saved)
+        print(f"per-image predictions saved to {a.save_probs}")
     if a.examples_png:
         save_examples(make, strengths, a.examples_png)
         print(f"example grid saved to {a.examples_png}")
